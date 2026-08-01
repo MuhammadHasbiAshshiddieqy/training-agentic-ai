@@ -44,6 +44,11 @@ Coba juga dengan kata-kata yang **tidak sama persis** dengan isi dokumen
 tetap relevan membuktikan pencarian ini bekerja berdasarkan makna
 (semantic search), bukan pencocokan kata.
 
+Parameter `limit` (jumlah chunk yang diambil, berlaku juga untuk `/rag` di
+bawah) dibatasi **1–10** — di luar rentang itu FastAPI otomatis menolak
+dengan `422`, supaya tidak ada yang tidak sengaja minta ratusan chunk
+sekaligus (konteks jadi terlalu panjang & mahal untuk dikirim ke Gemini).
+
 ## Coba Endpoint `/ask` (Peninggalan Modul 2 — Masih Simulasi)
 
 ```bash

@@ -12,7 +12,7 @@ from typing import List
 
 import psycopg
 import redis
-from fastapi import FastAPI, Header, Depends, HTTPException
+from fastapi import FastAPI, Header, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -167,7 +167,10 @@ class SearchResult(BaseModel):
 
 
 @app.get("/search", response_model=List[SearchResult])
-async def search(query: str, limit: int = 3):
+async def search(
+    query: str,
+    limit: int = Query(default=3, ge=1, le=10, description="Jumlah chunk relevan yang diambil"),
+):
     """
     Mencari potongan dokumen paling relevan secara makna terhadap `query`.
 
@@ -215,7 +218,10 @@ class RagAnswer(BaseModel):
 
 
 @app.get("/rag", response_model=RagAnswer)
-async def rag(query: str, limit: int = 3):
+async def rag(
+    query: str,
+    limit: int = Query(default=3, ge=1, le=10, description="Jumlah chunk relevan yang diambil"),
+):
     """
     Alur lengkap RAG dalam satu endpoint:
       1. Retrieval — cari `limit` chunk paling relevan di pgvector (sama seperti /search)
