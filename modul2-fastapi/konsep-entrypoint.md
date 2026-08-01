@@ -63,7 +63,35 @@ dipakai ulang di banyak skenario yang **tidak pernah lewat blok
    main:app` dengan banyak worker process sekaligus
 3. **Testing** — `from fastapi.testclient import TestClient` lalu
    `TestClient(app)`, meng-import `app` langsung tanpa ada server jaringan
-   yang benar-benar menyala
+   yang benar-benar menyala. Contoh konkretnya ada di
+   [test_main_demo.py](test_main_demo.py):
+
+   ```python
+   from fastapi.testclient import TestClient
+   from main import app
+
+   client = TestClient(app)
+
+   def test_documents_404():
+       response = client.get("/documents/999")
+       assert response.status_code == 404
+   ```
+
+   `TestClient` butuh `pytest` dan `httpx` (belum ada di `requirements.txt`
+   utama karena ini demo opsional, bukan bagian materi inti):
+
+   ```bash
+   uv pip install pytest httpx
+   uv run pytest test_main_demo.py -v -s
+   ```
+
+   Test ini tetap
+   lolos **walaupun tidak ada `uvicorn` yang jalan dan port 8000 kosong** —
+   `TestClient` mensimulasikan request HTTP langsung ke `app` di memori
+   (lewat ASGI transport), tanpa membuka socket TCP sungguhan. Ini bukti
+   paling jelas kenapa `app` harus tetap jadi objek yang bisa di-import
+   sendiri, terlepas dari cara menjalankannya — kalau start-server dipaksa
+   masuk ke blok `__main__`, `TestClient` tidak akan pernah menyentuhnya.
 
 Kalau logic start-server dipaksa masuk ke `main.py`, poin 2 dan 3 di atas
 tetap tidak memakainya (gunicorn dan `TestClient` tidak pernah menjalankan
