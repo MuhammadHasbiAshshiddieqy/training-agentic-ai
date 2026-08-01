@@ -27,6 +27,41 @@ Setelah `docker compose up --build` jalan, ini menyalakan 3 container:
 | `/cache-check` | GET | Cek koneksi Redis (tulis & baca satu key) |
 | `/gemini-test` | GET | Panggilan sederhana ke Gemini API — verifikasi API key sebelum Modul 4 |
 
+## Coba Sendiri
+
+```bash
+# /health — cek server hidup
+curl http://localhost:8000/health
+
+# /ask — dari Modul 2, butuh header x-api-key
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: rahasia-latihan" \
+  -d '{"question": "Apa itu RAG?"}'
+
+# /documents/{doc_id} — coba id 1 (ada) vs 999 (404)
+curl http://localhost:8000/documents/1
+curl http://localhost:8000/documents/999
+
+# /db-check — pastikan PostgreSQL + pgvector terhubung
+curl http://localhost:8000/db-check
+
+# /cache-check — pastikan Redis terhubung
+curl http://localhost:8000/cache-check
+
+# /gemini-test — butuh GEMINI_API_KEY valid di .env
+curl http://localhost:8000/gemini-test
+```
+
+Contoh respons `/gemini-test` kalau `GEMINI_API_KEY` valid:
+
+```json
+{
+  "prompt": "Halo, apa itu RAG?",
+  "response": "RAG (Retrieval-Augmented Generation) adalah teknik yang menggabungkan pencarian informasi dari sumber eksternal dengan model bahasa untuk menghasilkan jawaban yang lebih akurat."
+}
+```
+
 ## Sudah Diverifikasi
 
 `/db-check` dan `/cache-check` sudah diuji terhubung ke PostgreSQL (dengan
