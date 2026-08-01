@@ -29,7 +29,7 @@ docker compose exec db psql -U ai_user -d ai_knowledge -c "SELECT id, source_fil
 
 ## Endpoint yang Tersedia
 
-Selain `/search` (baru), semua endpoint dari Modul 2 & 3 tetap ada:
+Selain `/search` dan `/rag` (baru), semua endpoint dari Modul 2 & 3 tetap ada:
 `/health`, `/ask` (butuh header `x-api-key`), `/documents/{doc_id}`,
 `/db-check`, `/cache-check`, `/gemini-test`.
 
@@ -44,11 +44,71 @@ Coba juga dengan kata-kata yang **tidak sama persis** dengan isi dokumen
 tetap relevan membuktikan pencarian ini bekerja berdasarkan makna
 (semantic search), bukan pencocokan kata.
 
+## Coba Endpoint `/ask` (Peninggalan Modul 2 — Masih Simulasi)
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: rahasia-latihan" \
+  -d '{"question": "Bagaimana cara verifikasi stok barang?"}'
+```
+
+`/ask` **belum** membaca hasil `/search` maupun memanggil Gemini — jawabannya
+selalu berupa teks simulasi (`"Ini jawaban simulasi untuk pertanyaan: ..."`)
+persis seperti sejak Modul 2. Endpoint ini dipertahankan apa adanya supaya
+konsep Dependency Injection (`verify_api_key`) dan validasi Pydantic yang
+diajarkan di Modul 2 tetap bisa dicoba, tapi jangan terkecoh: untuk jawaban
+yang benar-benar berdasarkan isi dokumen, pakai `/search` di atas — `/ask`
+baru akan disatukan dengan retrieval + Gemini di **Modul 5** — atau coba
+sekarang lewat `/rag` di bawah ini.
+
+## Coba RAG Beneran: Endpoint `/rag`
+
+Kalau `/ask` masih simulasi dan `/search` cuma mengembalikan potongan mentah,
+`/rag` adalah versi yang **benar-benar** menggabungkan keduanya jadi jawaban
+akhir — alur RAG penuh dalam satu endpoint:
+
+1. **Retrieval** — cari chunk paling relevan di pgvector (persis `/search`)
+2. **Augmentation** — chunk-chunk itu disusun jadi konteks di dalam prompt
+3. **Generation** — prompt + konteks dikirim ke Gemini, jawabannya dikembalikan
+
+```bash
+curl "http://localhost:8000/rag?query=bagaimana%20cara%20verifikasi%20stok%20barang&limit=3"
+```
+
+Contoh respons (`answer` adalah jawaban asli dari Gemini, `sources` adalah
+chunk yang dipakai sebagai konteksnya):
+
+```json
+{
+  "question": "bagaimana cara verifikasi stok barang",
+  "answer": "Verifikasi stok barang dilakukan melalui sistem ERP dan stock opname.",
+  "sources": [ { "content": "...", "source_file": "sop_distribusi_logistik.txt", "chunk_index": 2, "distance": 0.25 } ],
+  "latency_ms": 5245
+}
+```
+
+Prompt-nya secara eksplisit melarang model mengarang jawaban di luar konteks
+— coba tanya sesuatu yang tidak ada di dokumen untuk membuktikannya:
+
+```bash
+curl "http://localhost:8000/rag?query=siapa%20presiden%20indonesia%20saat%20ini&limit=3"
+```
+
+Hasilnya jujur: `"Saya tidak tahu. Informasi tersebut tidak ada dalam konteks yang diberikan."`
+
+> `/rag` ini adalah **preview sederhana** untuk Modul 5 — belum ada
+> reranking, metadata filtering, atau manajemen konteks (mis. potong token
+> kalau chunk terlalu banyak). Modul 5 akan menyempurnakan bagian-bagian
+> itu.
+
 ## Sudah Diverifikasi
 
 Chunking, penyimpanan ke pgvector, idempotency (ingest dua kali tidak
-menduplikasi data), dan endpoint `/search` sudah diuji end-to-end
-terhadap PostgreSQL+pgvector sungguhan. Satu hal yang perlu Anda
+menduplikasi data), dan endpoint `/search` maupun `/rag` sudah diuji
+end-to-end terhadap PostgreSQL+pgvector dan Gemini API sungguhan —
+termasuk kasus `/rag` menjawab jujur "tidak tahu" untuk pertanyaan di
+luar konteks dokumen. Satu hal yang perlu Anda
 sediakan sendiri: **GEMINI_API_KEY yang valid** — bagian embedding
 tidak bisa diuji tanpa API key asli.
 

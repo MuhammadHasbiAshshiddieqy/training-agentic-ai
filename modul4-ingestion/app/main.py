@@ -201,3 +201,92 @@ async def search(query: str, limit: int = 3):
         SearchResult(content=r[0], source_file=r[1], chunk_index=r[2], distance=r[3])
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# BONUS — RAG penuh: Retrieval (pgvector) + Generation (Gemini) digabung.
+# Preview sederhana untuk Modul 5 (belum ada reranking/metadata filtering).
+# ---------------------------------------------------------------------------
+class RagAnswer(BaseModel):
+    question: str
+    answer: str
+    sources: List[SearchResult]
+    latency_ms: int
+
+
+@app.get("/rag", response_model=RagAnswer)
+async def rag(query: str, limit: int = 3):
+    """
+    Alur lengkap RAG dalam satu endpoint:
+      1. Retrieval — cari `limit` chunk paling relevan di pgvector (sama seperti /search)
+      2. Augmentation — susun chunk-chunk itu jadi konteks di dalam prompt
+      3. Generation — kirim prompt + konteks ke Gemini, kembalikan jawaban akhir
+
+    Beda dengan /ask (yang jawabannya masih simulasi), endpoint ini benar-benar
+    menjawab berdasarkan isi dokumen yang sudah di-ingest. Jalankan ingest.py
+    dulu supaya ada data untuk diambil.
+    """
+    start = time.perf_counter()
+
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="GEMINI_API_KEY belum di-set. Salin .env.example ke .env dan isi API key Anda.",
+        )
+
+    from ingest import embed_text  # reuse fungsi embedding yang sama dengan ingest.py
+
+    try:
+        query_embedding = embed_text(query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membuat embedding untuk query: {e}")
+
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT content, source_file, chunk_index, embedding <=> %s::vector AS distance
+                    FROM documents
+                    ORDER BY distance ASC
+                    LIMIT %s;
+                    """,
+                    (query_embedding, limit),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal melakukan pencarian: {e}")
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail="Tidak ada dokumen ditemukan. Jalankan 'docker compose exec app python ingest.py' dulu.",
+        )
+
+    sources = [
+        SearchResult(content=r[0], source_file=r[1], chunk_index=r[2], distance=r[3])
+        for r in rows
+    ]
+
+    context = "\n\n---\n\n".join(s.content for s in sources)
+    prompt = (
+        "Kamu adalah asisten yang menjawab HANYA berdasarkan konteks di bawah ini. "
+        "Kalau jawabannya tidak ada di konteks, katakan terus terang tidak tahu — "
+        "jangan mengarang.\n\n"
+        f"KONTEKS:\n{context}\n\n"
+        f"PERTANYAAN: {query}\n\n"
+        "JAWABAN (singkat dan jelas):"
+    )
+
+    try:
+        import google.generativeai as genai
+
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        answer_text = response.text
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal memanggil Gemini API: {e}")
+
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    return RagAnswer(question=query, answer=answer_text, sources=sources, latency_ms=elapsed_ms)
