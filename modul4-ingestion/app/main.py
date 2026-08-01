@@ -149,7 +149,7 @@ async def gemini_test():
         import google.generativeai as genai
 
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-flash-latest")
         response = model.generate_content("Halo, apa itu RAG? Jawab singkat dalam 1 kalimat.")
         return {"prompt": "Halo, apa itu RAG?", "response": response.text}
     except Exception as e:
@@ -288,7 +288,7 @@ async def rag(
         import google.generativeai as genai
 
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-flash-latest")
         response = model.generate_content(prompt)
         answer_text = response.text
     except Exception as e:
