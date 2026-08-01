@@ -14,6 +14,10 @@ Setelah server jalan, buka:
 - http://127.0.0.1:8000/docs — Swagger UI, coba endpoint langsung dari browser
 - http://127.0.0.1:8000/health — cek server hidup
 
+> **Baru pindah dari bahasa lain (mis. Go) dan bingung kenapa `main.py`
+> tidak punya `main()`/`server.Run()`?** Baca
+> [konsep-entrypoint.md](konsep-entrypoint.md).
+
 ## Endpoint yang Tersedia
 
 | Endpoint | Method | Keterangan |

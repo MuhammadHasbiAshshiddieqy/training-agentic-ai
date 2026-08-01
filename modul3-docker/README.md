@@ -16,10 +16,6 @@ Setelah `docker compose up --build` jalan, ini menyalakan 3 container:
 - `db` — PostgreSQL + pgvector di port 5432
 - `redis` — Redis di port 6379
 
-> **Baru pindah dari bahasa lain (mis. Go) dan bingung kenapa `main.py`
-> tidak punya `main()`/`server.Run()`?** Baca
-> [konsep-entrypoint.md](konsep-entrypoint.md).
-
 ## Endpoint yang Tersedia
 
 | Endpoint | Method | Keterangan |
