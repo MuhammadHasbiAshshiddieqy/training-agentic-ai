@@ -3,6 +3,10 @@
 Kode di folder ini sudah lengkap: pipeline ingestion (chunking → embedding
 → simpan ke pgvector) dan endpoint pencarian semantik.
 
+**Catatan SDK:** kode ini memakai `google-genai` (paket resmi terbaru).
+Paket `google-generativeai` yang lebih lama sudah *deprecated* sejak
+Agustus 2025 — jangan pakai itu untuk kode baru.
+
 ## Cara Menjalankan
 
 Panduan lengkap (install Docker, siapkan `.env`, jalankan Compose, jalankan

@@ -35,9 +35,6 @@ EMBEDDING_DIM = 768
 EMBEDDING_MODEL = "gemini-embedding-001"
 
 
-# ---------------------------------------------------------------------------
-# 1. Chunking
-# ---------------------------------------------------------------------------
 def chunk_text(text: str) -> list[str]:
     """Pecah teks jadi potongan CHUNK_SIZE karakter dengan overlap CHUNK_OVERLAP."""
     text = text.strip()
@@ -54,9 +51,6 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
-# ---------------------------------------------------------------------------
-# 2. Embedding
-# ---------------------------------------------------------------------------
 def embed_text(text: str, retries: int = 3) -> list[float]:
     """
     Ubah teks jadi vektor embedding memakai Gemini embedding API
@@ -86,9 +80,6 @@ def embed_text(text: str, retries: int = 3) -> list[float]:
     raise RuntimeError(f"Gagal mengambil embedding setelah {retries} percobaan: {last_error}")
 
 
-# ---------------------------------------------------------------------------
-# 3. Skema tabel
-# ---------------------------------------------------------------------------
 def ensure_table(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
@@ -115,9 +106,6 @@ def delete_existing_chunks(conn: psycopg.Connection, source_file: str) -> None:
         conn.commit()
 
 
-# ---------------------------------------------------------------------------
-# 4. Pipeline utama
-# ---------------------------------------------------------------------------
 def main():
     with psycopg.connect(DATABASE_URL) as conn:
         ensure_table(conn)

@@ -1,7 +1,11 @@
 # Modul 3 — Docker & Local AI Environment (Lengkap)
 
-Kode di folder ini sudah lengkap: FastAPI + PostgreSQL(pgvector) + Redis,
-semuanya dijalankan lewat Docker Compose.
+Kode di folder ini sudah lengkap: FastAPI + PostgreSQL(pgvector) + Redis +
+Gemini API, semuanya dijalankan lewat Docker Compose.
+
+**Catatan SDK:** kode ini memakai `google-genai` (paket resmi terbaru).
+Paket `google-generativeai` yang lebih lama sudah *deprecated* sejak
+Agustus 2025 — jangan pakai itu untuk kode baru.
 
 ## Cara Menjalankan
 

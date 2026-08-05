@@ -6,6 +6,9 @@ App ini dijalankan lewat Docker Compose (lihat README.md satu folder di atas),
 supaya app, database, dan cache hidup bersamaan di jaringan Docker yang sama.
 
 Endpoint /ask butuh header `x-api-key: rahasia-latihan` (lihat verify_api_key).
+
+Catatan SDK: memakai `google-genai` (paket resmi terbaru), BUKAN
+`google-generativeai` yang sudah deprecated sejak Agustus 2025.
 """
 import asyncio
 import os
@@ -17,13 +20,15 @@ import redis
 from fastapi import FastAPI, Header, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
+from google import genai
 
-app = FastAPI(title="AI Knowledge Assistant - Modul 3", version="2.0.0")
+app = FastAPI(title="AI Knowledge Assistant - Modul 3", version="3.0.0")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:ai_pass@localhost:5432/ai_knowledge")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 EXPECTED_API_KEY = os.getenv("EXPECTED_API_KEY", "rahasia-latihan")
+GEMINI_MODEL = "gemini-3.6-flash"  # Gemini 3.x - jauh lebih andal untuk tool calling dibanding versi <3
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +144,8 @@ async def cache_check():
 @app.get("/gemini-test")
 async def gemini_test():
     """
-    Panggilan sederhana ke Gemini API untuk memastikan API key valid
-    SEBELUM masuk ke pipeline embedding penuh di Modul 4.
+    Panggilan sederhana ke Gemini API (SDK google-genai) untuk memastikan
+    API key valid SEBELUM masuk ke pipeline embedding penuh di Modul 4.
     """
     if not GEMINI_API_KEY:
         raise HTTPException(
@@ -148,11 +153,11 @@ async def gemini_test():
             detail="GEMINI_API_KEY belum di-set. Salin .env.example ke .env dan isi API key Anda.",
         )
     try:
-        import google.generativeai as genai
-
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-flash-latest")
-        response = model.generate_content("Halo, apa itu RAG? Jawab singkat dalam 1 kalimat.")
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents="Halo, apa itu RAG? Jawab singkat dalam 1 kalimat.",
+        )
         return {"prompt": "Halo, apa itu RAG?", "response": response.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memanggil Gemini API: {e}")

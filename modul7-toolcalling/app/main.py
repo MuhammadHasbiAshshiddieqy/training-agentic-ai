@@ -1,26 +1,29 @@
 """
-Modul 4 - FastAPI App (lanjutan Modul 3) + Endpoint Pencarian Semantik (LENGKAP)
+Modul 7 - FastAPI App (lanjutan Modul 4) + Tool Calling / Function Calling (LENGKAP)
 AI Knowledge Assistant - Human Initiative
 
-Jalankan ingest.py DULU untuk mengisi tabel `documents`, baru endpoint
-/search di sini bisa mengembalikan hasil.
+Menambahkan endpoint /chat yang memakai Gemini function calling untuk
+memanggil tool (cek_stok_barang, cari_dokumen) sesuai kebutuhan pertanyaan
+user. Lihat tools.py untuk definisi tool-nya.
 
 Catatan SDK: memakai `google-genai` (paket resmi terbaru).
 """
 import asyncio
 import os
 import time
-from typing import List
+from typing import List, Any
 
 import psycopg
 import redis
-from fastapi import FastAPI, Header, Depends, HTTPException, Query
+from fastapi import FastAPI, Header, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from google import genai
 from google.genai import types
 
-app = FastAPI(title="AI Knowledge Assistant - Modul 4", version="4.0.0")
+from tools import ALL_TOOLS, TOOL_REGISTRY
+
+app = FastAPI(title="AI Knowledge Assistant - Modul 7", version="7.0.0")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:ai_pass@localhost:5432/ai_knowledge")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -29,9 +32,6 @@ EXPECTED_API_KEY = os.getenv("EXPECTED_API_KEY", "rahasia-latihan")
 GEMINI_MODEL = "gemini-3.6-flash"  # Gemini 3.x - jauh lebih andal untuk tool calling dibanding versi <3
 
 
-# ---------------------------------------------------------------------------
-# Pydantic Models (dari Modul 2)
-# ---------------------------------------------------------------------------
 class DocumentQuery(BaseModel):
     question: str = Field(..., min_length=3, description="Pertanyaan dari user")
     max_results: int = Field(default=3, ge=1, le=10, description="Jumlah dokumen relevan yang dicari")
@@ -51,18 +51,12 @@ class DocumentAnswer(BaseModel):
     latency_ms: int
 
 
-# ---------------------------------------------------------------------------
-# Dependency Injection (dari Modul 2)
-# ---------------------------------------------------------------------------
 def verify_api_key(x_api_key: str | None = Header(default=None)) -> str:
     if x_api_key is None or x_api_key != EXPECTED_API_KEY:
         raise HTTPException(status_code=401, detail="Header x-api-key tidak ada atau tidak valid")
     return x_api_key
 
 
-# ---------------------------------------------------------------------------
-# Endpoints dari Modul 2
-# ---------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
@@ -105,22 +99,13 @@ async def get_document(doc_id: int):
 # ---------------------------------------------------------------------------
 @app.get("/db-check")
 async def db_check():
-    """
-    Cek koneksi ke PostgreSQL dan pastikan extension pgvector aktif.
-    Dijalankan sinkron di dalam fungsi async (koneksi singkat, cukup cepat
-    untuk contoh ini) — di endpoint dengan traffic tinggi, pertimbangkan
-    connection pool async (mis. psycopg_pool / asyncpg).
-    """
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=5) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1;")
                 cur.fetchone()
-
-                # Aktifkan pgvector sekali di sini (idempotent — aman dipanggil berulang)
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
                 conn.commit()
-
         return {"database": "connected", "pgvector": "enabled"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal terhubung ke database: {e}")
@@ -128,11 +113,10 @@ async def db_check():
 
 @app.get("/cache-check")
 async def cache_check():
-    """Cek koneksi ke Redis dengan menulis lalu membaca satu key."""
     try:
         r = redis.from_url(REDIS_URL, socket_connect_timeout=5)
         now = str(time.time())
-        r.set("healthcheck", now, ex=60)  # expire otomatis dalam 60 detik
+        r.set("healthcheck", now, ex=60)
         value = r.get("healthcheck")
         return {"cache": "connected", "healthcheck_value": value.decode() if value else None}
     except Exception as e:
@@ -172,10 +156,7 @@ class SearchResult(BaseModel):
 
 
 @app.get("/search", response_model=List[SearchResult])
-async def search(
-    query: str,
-    limit: int = Query(default=3, ge=1, le=10, description="Jumlah chunk relevan yang diambil"),
-):
+async def search(query: str, limit: int = 3):
     """
     Mencari potongan dokumen paling relevan secara makna terhadap `query`.
 
@@ -212,89 +193,101 @@ async def search(
 
 
 # ---------------------------------------------------------------------------
-# BONUS — RAG penuh: Retrieval (pgvector) + Generation (Gemini) digabung.
-# Preview sederhana untuk Modul 5 (belum ada reranking/metadata filtering).
+# MODUL 7 — Tool Calling / Function Calling
 # ---------------------------------------------------------------------------
-class RagAnswer(BaseModel):
-    question: str
+class ChatMessage(BaseModel):
+    message: str = Field(..., min_length=1)
+
+
+class ToolCallLog(BaseModel):
+    name: str
+    args: dict
+    result: Any
+
+
+class ChatResponse(BaseModel):
     answer: str
-    sources: List[SearchResult]
-    latency_ms: int
+    tools_called: List[ToolCallLog] = []
 
 
-@app.get("/rag", response_model=RagAnswer)
-async def rag(
-    query: str,
-    limit: int = Query(default=3, ge=1, le=10, description="Jumlah chunk relevan yang diambil"),
-):
+@app.post("/chat", response_model=ChatResponse)
+async def chat(payload: ChatMessage, api_key: str = Depends(verify_api_key)):
     """
-    Alur lengkap RAG dalam satu endpoint:
-      1. Retrieval — cari `limit` chunk paling relevan di pgvector (sama seperti /search)
-      2. Augmentation — susun chunk-chunk itu jadi konteks di dalam prompt
-      3. Generation — kirim prompt + konteks ke Gemini, kembalikan jawaban akhir
-
-    Beda dengan /ask (yang jawabannya masih simulasi), endpoint ini benar-benar
-    menjawab berdasarkan isi dokumen yang sudah di-ingest. Jalankan ingest.py
-    dulu supaya ada data untuk diambil.
+    Endpoint chat dengan tool calling. Alur:
+      1. Kirim pesan user ke Gemini beserta daftar tool yang tersedia
+      2. Kalau Gemini minta panggil tool, kita EKSEKUSI tool itu sendiri
+         (Gemini tidak pernah menjalankan kode secara langsung)
+      3. Kirim hasil eksekusi kembali ke Gemini untuk disusun jadi jawaban
+         akhir dalam bahasa natural
     """
-    start = time.perf_counter()
-
     if not GEMINI_API_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="GEMINI_API_KEY belum di-set. Salin .env.example ke .env dan isi API key Anda.",
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY belum di-set")
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    config = types.GenerateContentConfig(tools=[ALL_TOOLS])
+
+    contents = [types.Content(role="user", parts=[types.Part(text=payload.message)])]
+
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL, contents=contents, config=config,
         )
-
-    from ingest import embed_text  # reuse fungsi embedding yang sama dengan ingest.py
-
-    try:
-        query_embedding = embed_text(query)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal membuat embedding untuk query: {e}")
-
-    try:
-        with psycopg.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT content, source_file, chunk_index, embedding <=> %s::vector AS distance
-                    FROM documents
-                    ORDER BY distance ASC
-                    LIMIT %s;
-                    """,
-                    (query_embedding, limit),
-                )
-                rows = cur.fetchall()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal melakukan pencarian: {e}")
-
-    if not rows:
-        raise HTTPException(
-            status_code=404,
-            detail="Tidak ada dokumen ditemukan. Jalankan 'docker compose exec app python ingest.py' dulu.",
-        )
-
-    sources = [
-        SearchResult(content=r[0], source_file=r[1], chunk_index=r[2], distance=r[3])
-        for r in rows
-    ]
-
-    context = "\n\n---\n\n".join(s.content for s in sources)
-    prompt = (
-        "Kamu adalah asisten yang menjawab HANYA berdasarkan konteks di bawah ini. "
-        "Kalau jawabannya tidak ada di konteks, katakan terus terang tidak tahu — "
-        "jangan mengarang.\n\n"
-        f"KONTEKS:\n{context}\n\n"
-        f"PERTANYAAN: {query}\n\n"
-        "JAWABAN (singkat dan jelas):"
-    )
-
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
-        answer_text = response.text
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memanggil Gemini API: {e}")
 
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
-    return RagAnswer(question=query, answer=answer_text, sources=sources, latency_ms=elapsed_ms)
+    tools_called: List[ToolCallLog] = []
+
+    if response.function_calls:
+        # Simpan giliran model (berisi permintaan function call) ke history
+        contents.append(response.candidates[0].content)
+
+        function_response_parts = []
+        for fc in response.function_calls:
+            fn = TOOL_REGISTRY.get(fc.name)
+            args = dict(fc.args) if fc.args else {}
+            if fn is None:
+                result = {"error": f"Tool '{fc.name}' tidak dikenali"}
+            else:
+                try:
+                    result = fn(**args)
+                except Exception as e:
+                    result = {"error": f"Tool '{fc.name}' gagal dieksekusi: {e}"}
+
+            tools_called.append(ToolCallLog(name=fc.name, args=args, result=result))
+            # Gemini 3.x memvalidasi id, name, dan jumlah response harus cocok
+            # dengan function_calls sebelumnya — Part.from_function_response()
+            # tidak punya parameter id, jadi kita bangun FunctionResponse
+            # langsung supaya id ikut terkirim balik (aman juga untuk model <3
+            # yang tidak mewajibkan id).
+            function_response_parts.append(
+                types.Part(function_response=types.FunctionResponse(
+                    id=getattr(fc, "id", None),
+                    name=fc.name,
+                    response={"result": result},
+                ))
+            )
+
+        contents.append(types.Content(role="user", parts=function_response_parts))
+
+        try:
+            final_response = client.models.generate_content(
+                model=GEMINI_MODEL, contents=contents, config=config,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Gagal mendapat jawaban akhir dari Gemini: {e}")
+
+        # Model kadang memutuskan memanggil tool LAGI di putaran kedua alih-alih
+        # memberi jawaban teks — dalam kasus itu final_response.text bernilai
+        # None. /chat sengaja hanya menangani SATU putaran tool calling (lihat
+        # Modul 8 untuk loop multi-langkah), jadi di sini kita beri pesan yang
+        # jelas alih-alih membiarkan ChatResponse(answer=None) crash 500.
+        answer_text = final_response.text or (
+            "Model masih ingin memanggil tool tambahan setelah putaran pertama — "
+            "/chat di sini hanya menangani satu putaran tool calling. Coba "
+            "endpoint /agent di Modul 8 untuk kasus yang butuh beberapa "
+            "langkah tool calling berurutan."
+        )
+    else:
+        answer_text = response.text
+
+    return ChatResponse(answer=answer_text, tools_called=tools_called)
