@@ -14,13 +14,12 @@ dan ALL_TOOLS di bagian bawah file ini.
 import os
 
 import psycopg
-from google import genai
 from google.genai import types
+
+from retrieval import vector_search, keyword_search, rrf_merge, rerank_candidates, RETRIEVE_TOP_K, RRF_K
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:ai_pass@localhost:5432/ai_knowledge")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-EMBEDDING_MODEL = "gemini-embedding-001"
-EMBEDDING_DIM = 768
 
 
 # ===========================================================================
@@ -65,39 +64,37 @@ CEK_STOK_DECLARATION = types.FunctionDeclaration(
 
 # ===========================================================================
 # TOOL 2 — cari_dokumen
-# Membungkus pencarian semantik dari Modul 4 (embedding + pgvector) sebagai
-# tool yang bisa dipanggil Gemini kapan pun user butuh info dari dokumen
-# internal (SOP, kebijakan), bukan data transaksional seperti stok.
+# Membungkus pipeline Hybrid Search + rerank dari Modul 5/6 (retrieval.py)
+# sebagai tool yang bisa dipanggil Gemini kapan pun user butuh info dari
+# dokumen internal (SOP, kebijakan), bukan data transaksional seperti
+# stok — pipeline yang SAMA dengan endpoint /search di main.py, supaya
+# agent tidak memakai kualitas retrieval yang lebih rendah dari endpoint
+# HTTP-nya sendiri.
 # ===========================================================================
 def cari_dokumen(query: str, limit: int = 3) -> list:
-    """Mencari potongan dokumen internal yang relevan secara makna dengan query."""
+    """Mencari potongan dokumen internal yang relevan dengan query lewat Hybrid Search + rerank."""
     if not GEMINI_API_KEY:
         return [{"error": "GEMINI_API_KEY belum di-set"}]
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    result = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=query,
-        config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM),
-    )
-    query_embedding = result.embeddings[0].values
+    from ingest import embed_text  # reuse fungsi embedding yang sama dengan ingest.py
+
+    query_embedding = embed_text(query)
 
     with psycopg.connect(DATABASE_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT content, source_file, embedding <=> %s::vector AS distance
-                FROM documents
-                ORDER BY distance ASC
-                LIMIT %s;
-                """,
-                (query_embedding, limit),
-            )
-            rows = cur.fetchall()
+        vector_results = vector_search(conn, query_embedding, RETRIEVE_TOP_K)
+        keyword_results = keyword_search(conn, query, RETRIEVE_TOP_K)
+
+    merged = rrf_merge(vector_results, keyword_results, k=RRF_K, top_k=RETRIEVE_TOP_K)
+    reranked = rerank_candidates(query, merged, top_n=limit)
 
     return [
-        {"content": r[0][:300], "source_file": r[1], "distance": round(r[2], 4)}
-        for r in rows
+        {
+            "content": r["content"][:300],
+            "source_file": r["source_file"],
+            "category": r["category"],
+            "relevance_score": r.get("relevance_score"),
+        }
+        for r in reranked
     ]
 
 

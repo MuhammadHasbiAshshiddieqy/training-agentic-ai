@@ -1,12 +1,10 @@
 """
-Modul 8 - Pipeline Data Ingestion + Hybrid Search Index (LENGKAP)
+Modul 5 - Pipeline Data Ingestion + Metadata (LENGKAP)
 AI Knowledge Assistant - Human Initiative
 
-Dibawa maju dari Modul 6: kolom `content_tsv` (tsvector) + index GIN
-supaya PostgreSQL full-text search bisa dipakai berdampingan dengan
-vector search — dipakai bersama oleh endpoint /search DAN tool
-cari_dokumen (lihat retrieval.py) supaya keduanya sama-sama Hybrid
-Search, bukan cuma vector search polos ala Modul 4.
+Melanjutkan Modul 4: menambahkan kolom metadata `category` supaya
+endpoint /search bisa memfilter berdasarkan kategori dokumen — komponen
+"metadata filtering" dari Production RAG.
 
 Catatan SDK: memakai `google-genai`. Model embedding gemini-embedding-001
 menghasilkan 3072 dimensi secara default; kita minta 768 dimensi lewat
@@ -100,23 +98,11 @@ def ensure_table(conn: psycopg.Connection) -> None:
                 created_at TIMESTAMPTZ DEFAULT now()
             );
         """)
-        # Kolom yang mungkin belum ada kalau tabel dibuat di Modul 4/5 —
-        # ditambahkan secara aman (idempotent).
+        # Kolom `category` mungkin sudah ada dari ingest sebelumnya (Modul 4) —
+        # tambahkan secara aman kalau tabel dibuat sebelum Modul 5.
         cur.execute("""
             ALTER TABLE documents
             ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'umum';
-        """)
-        # --- MODUL 6: kolom tsvector untuk full-text search (keyword search) ---
-        # GENERATED ALWAYS ... STORED = PostgreSQL otomatis menghitung ulang
-        # kolom ini setiap kali `content` berubah, tidak perlu di-maintain manual.
-        cur.execute("""
-            ALTER TABLE documents
-            ADD COLUMN IF NOT EXISTS content_tsv tsvector
-            GENERATED ALWAYS AS (to_tsvector('indonesian', content)) STORED;
-        """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS documents_content_tsv_idx
-            ON documents USING GIN (content_tsv);
         """)
         conn.commit()
 

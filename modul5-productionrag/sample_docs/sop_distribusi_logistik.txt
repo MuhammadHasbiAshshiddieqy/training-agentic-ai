@@ -1,0 +1,63 @@
+SOP DISTRIBUSI LOGISTIK BANTUAN
+Human Initiative - Dokumen Internal (Contoh Latihan)
+
+1. TUJUAN
+Prosedur ini mengatur alur permintaan, verifikasi, dan distribusi barang
+logistik bantuan (sembako, air bersih, kebutuhan darurat) ke titik
+distribusi di lapangan agar tepat sasaran dan tercatat dengan baik.
+
+2. RUANG LINGKUP
+Berlaku untuk seluruh tim logistik pusat dan relawan lapangan yang
+terlibat dalam proses distribusi bantuan, baik untuk program reguler
+maupun tanggap darurat bencana.
+
+3. DEFINISI
+- Gudang Transit: lokasi penyimpanan sementara sebelum barang dikirim ke titik distribusi.
+- Titik Distribusi: lokasi akhir penyerahan bantuan kepada penerima manfaat.
+- Surat Jalan: dokumen yang menyertai setiap pengiriman barang dari gudang.
+
+4. PROSEDUR PERMINTAAN BARANG
+4.1 Koordinator lapangan mengajukan permintaan barang melalui sistem ERP
+    minimal 2 hari sebelum jadwal distribusi.
+4.2 Permintaan mencantumkan jenis barang, jumlah, titik distribusi tujuan,
+    dan estimasi jumlah penerima manfaat.
+4.3 Tim logistik pusat memverifikasi ketersediaan stok di Gudang Transit
+    melalui sistem ERP sebelum menyetujui permintaan.
+
+5. PROSEDUR VERIFIKASI STOK
+5.1 Setiap pengeluaran barang dari Gudang Transit harus dicatat di sistem
+    ERP pada hari yang sama dengan pengeluaran fisik barang.
+5.2 Selisih antara stok sistem dan stok fisik yang ditemukan saat stock
+    opname harus dilaporkan ke Supervisor Logistik dalam 1x24 jam.
+5.3 Barang dengan tanggal kedaluwarsa mendekati (kurang dari 30 hari)
+    harus diprioritaskan untuk didistribusikan lebih dulu (prinsip FEFO -
+    First Expired First Out).
+
+6. PROSEDUR PENGIRIMAN
+6.1 Setiap pengiriman dari Gudang Transit ke Titik Distribusi wajib
+    disertai Surat Jalan yang memuat rincian barang dan penanggung jawab.
+6.2 Sopir/relawan pengantar wajib mendapatkan konfirmasi tanda terima
+    dari koordinator di titik distribusi, difoto sebagai bukti serah terima.
+6.3 Jika terjadi kerusakan barang selama pengiriman, dokumentasikan
+    dengan foto dan laporkan ke tim logistik pusat maksimal 1x24 jam
+    setelah kejadian.
+
+7. PROSEDUR SERAH TERIMA KE PENERIMA MANFAAT
+7.1 Penyerahan bantuan kepada penerima manfaat wajib dicatat menggunakan
+    formulir serah terima yang memuat nama, jenis bantuan, dan tanda
+    tangan/cap jempol penerima.
+7.2 Koordinator lapangan menginput data serah terima ke sistem ERP
+    maksimal 2x24 jam setelah kegiatan distribusi selesai.
+
+8. ESKALASI MASALAH
+8.1 Kendala yang menghambat distribusi (akses jalan, cuaca, keamanan)
+    dilaporkan segera ke Supervisor Logistik melalui saluran komunikasi
+    darurat yang telah ditentukan.
+8.2 Supervisor Logistik berwenang mengambil keputusan alternatif rute
+    atau penjadwalan ulang distribusi dengan tetap mendokumentasikan
+    alasan perubahan di sistem ERP.
+
+9. REVISI DOKUMEN
+Dokumen ini ditinjau ulang setiap 6 bulan atau lebih cepat jika ada
+perubahan kebijakan organisasi. Versi terbaru selalu tersedia di sistem
+manajemen dokumen internal.

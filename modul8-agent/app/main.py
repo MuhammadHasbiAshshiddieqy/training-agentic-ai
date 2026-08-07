@@ -6,6 +6,10 @@ Menambahkan endpoint /agent yang memakai loop Think-Act-Observe (lihat
 agent.py) untuk menangani permintaan yang butuh beberapa langkah tool
 calling berurutan, bukan cuma satu kali panggilan seperti /chat di Modul 7.
 
+Endpoint /search dan tool cari_dokumen (dipakai agent) sama-sama memakai
+pipeline Hybrid Search + rerank + context assembly dari Modul 5/6 (lihat
+retrieval.py), bukan vector search polos ala Modul 4.
+
 Catatan SDK: memakai `google-genai` (paket resmi terbaru).
 """
 import asyncio
@@ -15,7 +19,7 @@ from typing import List, Any
 
 import psycopg
 import redis
-from fastapi import FastAPI, Header, Depends, HTTPException
+from fastapi import FastAPI, Header, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from google import genai
@@ -23,6 +27,10 @@ from google.genai import types
 
 from tools import ALL_TOOLS, TOOL_REGISTRY
 from agent import Agent
+from retrieval import (
+    vector_search, keyword_search, rrf_merge, rerank_candidates, assemble_context,
+    RETRIEVE_TOP_K, RRF_K,
+)
 
 app = FastAPI(title="AI Knowledge Assistant - Modul 8", version="8.0.0")
 
@@ -147,24 +155,43 @@ async def gemini_test():
 
 
 # ---------------------------------------------------------------------------
-# MODUL 4 — Pencarian semantik di atas data hasil ingestion
+# MODUL 5/6 — Production RAG (metadata filter + rerank + context assembly)
+# + Hybrid Search (vector + keyword + RRF), dibawa maju dari Modul 6 —
+# lihat retrieval.py untuk implementasi tiap tahapnya.
 # ---------------------------------------------------------------------------
 class SearchResult(BaseModel):
     content: str
     source_file: str
     chunk_index: int
-    distance: float
+    category: str
+    distance: float | None = None  # None kalau dokumen hanya ditemukan lewat keyword search
+    rrf_score: float | None = None  # skor gabungan dari Reciprocal Rank Fusion
+    relevance_score: float | None = None  # skor dari tahap rerank Gemini
 
 
-@app.get("/search", response_model=List[SearchResult])
-async def search(query: str, limit: int = 3):
+class ProductionSearchResponse(BaseModel):
+    query: str
+    context: str
+    sources: List[SearchResult]
+    candidates_retrieved: int
+    candidates_after_rerank: int
+
+
+@app.get("/search", response_model=ProductionSearchResponse)
+async def search(
+    query: str,
+    limit: int = Query(default=3, ge=1, le=10, description="Jumlah chunk relevan yang diambil"),
+    category: str | None = None,
+):
     """
-    Mencari potongan dokumen paling relevan secara makna terhadap `query`.
-
-    Jalankan `python ingest.py` terlebih dahulu supaya tabel `documents`
-    sudah terisi. distance lebih kecil = lebih relevan (cosine distance).
+    Hybrid Search RAG — empat tahap:
+      1. Retrieval GANDA: vector search DAN keyword search berjalan
+         masing-masing, ambil RETRIEVE_TOP_K kandidat (opsional difilter `category`)
+      2. RRF merge: gabungkan kedua ranked list jadi satu daftar kandidat
+      3. Rerank: Gemini menilai ulang kandidat gabungan, ambil `limit` terbaik
+      4. Context assembly: gabungkan jadi satu context siap pakai
     """
-    from ingest import embed_text  # reuse fungsi embedding yang sama dengan ingest.py
+    from ingest import embed_text
 
     try:
         query_embedding = embed_text(query)
@@ -173,24 +200,34 @@ async def search(query: str, limit: int = 3):
 
     try:
         with psycopg.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT content, source_file, chunk_index, embedding <=> %s::vector AS distance
-                    FROM documents
-                    ORDER BY distance ASC
-                    LIMIT %s;
-                    """,
-                    (query_embedding, limit),
-                )
-                rows = cur.fetchall()
+            vector_results = vector_search(conn, query_embedding, RETRIEVE_TOP_K, category)
+            keyword_results = keyword_search(conn, query, RETRIEVE_TOP_K, category)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal melakukan pencarian: {e}")
 
-    return [
-        SearchResult(content=r[0], source_file=r[1], chunk_index=r[2], distance=r[3])
-        for r in rows
-    ]
+    merged_candidates = rrf_merge(vector_results, keyword_results, k=RRF_K, top_k=RETRIEVE_TOP_K)
+
+    try:
+        reranked = rerank_candidates(query, merged_candidates, top_n=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal melakukan reranking: {e}")
+
+    context = assemble_context(reranked)
+
+    return ProductionSearchResponse(
+        query=query,
+        context=context,
+        sources=[
+            SearchResult(
+                content=c["content"], source_file=c["source_file"], chunk_index=c["chunk_index"],
+                category=c["category"], distance=c.get("distance"), rrf_score=c.get("rrf_score"),
+                relevance_score=c.get("relevance_score"),
+            )
+            for c in reranked
+        ],
+        candidates_retrieved=len(merged_candidates),
+        candidates_after_rerank=len(reranked),
+    )
 
 
 # ---------------------------------------------------------------------------

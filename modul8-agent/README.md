@@ -3,6 +3,11 @@
 Kode di folder ini sudah lengkap: kelas `Agent` dengan loop
 Think-Act-Observe (`app/agent.py`) dan endpoint `/agent`.
 
+Dibawa maju dari Modul 4-6: endpoint `/search` DAN tool `cari_dokumen`
+(dipakai agent) sama-sama memakai pipeline **Hybrid Search + rerank +
+context assembly** (lihat `app/retrieval.py`) — bukan vector search
+polos ala Modul 4.
+
 ## Cara Menjalankan
 
 Panduan lengkap (install Docker, siapkan `.env`, jalankan Compose, isi data
@@ -26,6 +31,7 @@ docker compose exec app python ingest.py
 | Endpoint | Method | Keterangan |
 |---|---|---|
 | `/agent` | POST | Agent multi-langkah — butuh header `x-api-key` |
+| `/search` | GET | Dibawa maju dari Modul 6 — Hybrid Search + rerank + context assembly, dengan filter `category` |
 
 Body: `{"goal": "...", "max_steps": 5}` (`max_steps` opsional, default 5)
 
@@ -50,17 +56,14 @@ dengan benar dalam satu kali panggilan.
 
 ## Sudah Diverifikasi
 
-Loop `Agent.run()` sudah diuji lewat panggilan langsung maupun lewat
-endpoint `/agent` via HTTP sungguhan, dengan Gemini API yang di-mock:
-
-- Skenario 2 langkah (cek stok → keputusan cari SOP → jawaban akhir) —
-  loop berhenti dengan benar di langkah ke-3 setelah dapat jawaban final
-- Skenario "macet" (model terus minta tool tanpa akhir) — pengaman
-  `max_steps` terbukti menghentikan loop paksa, tidak berjalan tanpa
-  henti
-
-**Coba dengan API key Anda sendiri** untuk memverifikasi perilaku Gemini
-yang sesungguhnya dalam memutuskan kapan berhenti memanggil tool.
+Loop `Agent.run()` dan endpoint `/agent` sudah diuji dengan **API key
+Gemini sungguhan** (bukan mock): goal yang butuh `cari_dokumen` (hybrid
+search + rerank) berhasil dijawab benar dalam 2 langkah
+(`model_gave_final_answer`), dan goal 2-tool berurutan (cek stok →
+keputusan cari SOP berdasarkan hasilnya) berhasil dalam 4 langkah.
+Skenario "macet" (model terus minta tool tanpa akhir) diuji dengan
+Gemini client di-mock — pengaman `max_steps` terbukti menghentikan loop
+paksa, tidak berjalan tanpa henti.
 
 ## Menuju Modul 9
 

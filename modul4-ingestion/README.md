@@ -106,10 +106,10 @@ curl "http://localhost:8000/rag?query=siapa%20presiden%20indonesia%20saat%20ini&
 
 Hasilnya jujur: `"Saya tidak tahu. Informasi tersebut tidak ada dalam konteks yang diberikan."`
 
-> `/rag` ini adalah **preview sederhana** untuk Modul 5 — belum ada
-> reranking, metadata filtering, atau manajemen konteks (mis. potong token
-> kalau chunk terlalu banyak). Modul 5 akan menyempurnakan bagian-bagian
-> itu.
+> `/rag` ini adalah **preview sederhana** — belum ada reranking, metadata
+> filtering, atau manajemen konteks (mis. potong token kalau chunk
+> terlalu banyak). Lihat `../modul5-productionrag/` untuk versi yang
+> menyempurnakan bagian-bagian itu.
 
 ## Sudah Diverifikasi
 
@@ -124,6 +124,8 @@ tidak bisa diuji tanpa API key asli.
 ## Menuju Modul 5
 
 Endpoint `/search` ini adalah versi awal dari komponen **Retrieval**
-pada arsitektur RAG. Di Modul 5 (Production RAG), endpoint ini akan
-disempurnakan dengan metadata filtering, reranking, dan manajemen
-konteks sebelum disatukan dengan LLM untuk menghasilkan jawaban akhir.
+pada arsitektur RAG. Di [`modul5-productionrag/`](../modul5-productionrag/),
+endpoint ini disempurnakan dengan metadata filtering, reranking, dan
+manajemen konteks — lalu di [`modul6-hybridsearch/`](../modul6-hybridsearch/)
+digabung dengan keyword search (Hybrid Search) sebelum disatukan dengan
+LLM untuk menghasilkan jawaban akhir.

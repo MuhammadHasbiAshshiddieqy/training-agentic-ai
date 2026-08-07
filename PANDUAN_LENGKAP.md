@@ -1,4 +1,4 @@
-# Panduan Lengkap: Menjalankan Kode Modul 2, 3, 4, 7 & 8
+# Panduan Lengkap: Menjalankan Kode Modul 2-4 & 7-8
 ## AI Knowledge Assistant — Human Initiative × Principal Tech Sage
 
 Panduan ini untuk peserta yang **hanya punya Python dan Docker terinstall**
@@ -24,7 +24,7 @@ yang lebih lengkap.
 > itu pola yang sudah usang.
 
 > **Catatan Model:** kit ini memakai **`gemini-3.6-flash`** (Gemini 3.x)
-> untuk Modul 3, 4, 7, dan 8 — model di bawah versi 3 relatif lebih sering
+> untuk Modul 3 sampai 8 — model di bawah versi 3 relatif lebih sering
 > gagal/tidak konsisten dalam tool calling. Free tier API key biasanya
 > dibatasi ±20 request/hari untuk model ini — kalau dapat error `429
 > RESOURCE_EXHAUSTED` saat demo, tunggu beberapa puluh detik lalu coba
@@ -282,9 +282,98 @@ dokumen, bukan simulasi.
 
 ---
 
-## 4. Modul 7 — Tool Calling & Function Calling
+## 4. Modul 5 — Production RAG
+
+Menyempurnakan `/search` dengan tiga teknik: **metadata filtering**,
+**reranking** (Gemini menilai ulang kandidat pakai structured output),
+dan **context assembly** (deduplikasi + batas karakter).
 
 ### 4.1 Masuk ke folder & jalankan
+
+```bash
+cd ../modul5-productionrag
+cp .env.example .env   # Windows PowerShell: Copy-Item .env.example .env
+docker compose up --build
+```
+
+Di terminal baru:
+
+```bash
+cd modul5-productionrag
+docker compose exec app python ingest.py
+```
+
+Ingestion sekarang menyimpan 2 dokumen contoh dengan kategori berbeda:
+`sop_distribusi_logistik.txt` (`logistik`) dan
+`kebijakan_pengadaan_barang.txt` (`keuangan`).
+
+### 4.2 Coba endpoint /search yang disempurnakan
+
+```bash
+# Tanpa filter kategori
+curl "http://localhost:8000/search?query=bagaimana+prosedur+verifikasi+stok&limit=2"
+
+# Dengan filter kategori
+curl "http://localhost:8000/search?query=ambang+batas+pengadaan&limit=2&category=keuangan"
+```
+
+Bandingkan `candidates_retrieved` (10, sebelum rerank) dengan
+`candidates_after_rerank` (`limit`) di response, dan perhatikan
+`relevance_score` tiap sumber — bukan cuma `distance`.
+
+### Endpoint tambahan di Modul 5
+
+| Endpoint | Method | Keterangan |
+|---|---|---|
+| `/search?query=...&limit=3&category=...` | GET | Production RAG: metadata filter + rerank + context assembly |
+
+---
+
+## 5. Modul 6 — Hybrid Search
+
+Menggabungkan **keyword search** (PostgreSQL full-text search) dengan
+vector search memakai **Reciprocal Rank Fusion (RRF)** — melengkapi
+kelemahan vector search untuk istilah spesifik (nominal, kode barang)
+yang sering tidak tertangkap baik secara semantik. Tahap rerank &
+context assembly dari Modul 5 tetap berjalan setelahnya.
+
+### 5.1 Masuk ke folder & jalankan
+
+```bash
+cd ../modul6-hybridsearch
+cp .env.example .env
+docker compose up --build
+```
+
+Di terminal baru: `docker compose exec app python ingest.py` — ingestion
+sekarang juga membentuk kolom `content_tsv` (generated column) + index
+GIN untuk full-text search, otomatis tanpa langkah tambahan.
+
+### 5.2 Coba endpoint /search hybrid
+
+```bash
+curl "http://localhost:8000/search?query=ambang+batas+nilai+pengadaan&limit=2"
+```
+
+Query dengan istilah spesifik seperti ini terbantu keyword search.
+Perhatikan `rrf_score` di tiap `sources` — dokumen yang muncul di KEDUA
+metode pencarian (vector & keyword) naik ke posisi teratas.
+
+### Endpoint tambahan di Modul 6
+
+| Endpoint | Method | Keterangan |
+|---|---|---|
+| `/search?query=...&limit=3&category=...` | GET | Hybrid Search (vector + keyword + RRF) + rerank + context assembly |
+
+---
+
+## 6. Modul 7 — Tool Calling & Function Calling
+
+Endpoint `/search` DAN tool `cari_dokumen` di modul ini sama-sama
+memakai pipeline Hybrid Search + rerank dari Modul 5/6 (lihat
+`app/retrieval.py`) — bukan vector search polos ala Modul 4.
+
+### 6.1 Masuk ke folder & jalankan
 
 ```bash
 cd ../modul7-toolcalling
@@ -299,7 +388,7 @@ cd modul7-toolcalling
 docker compose exec app python ingest.py
 ```
 
-### 4.2 Coba endpoint /chat
+### 6.2 Coba endpoint /chat
 
 ```bash
 curl -X POST http://localhost:8000/chat \
@@ -327,9 +416,12 @@ dibutuhkan.
 
 ---
 
-## 5. Modul 8 — Agent Foundation
+## 7. Modul 8 — Agent Foundation
 
-### 5.1 Masuk ke folder & jalankan
+Sama seperti Modul 7, endpoint `/search` dan tool `cari_dokumen` (dipakai
+agent) di modul ini memakai pipeline Hybrid Search + rerank dari Modul 5/6.
+
+### 7.1 Masuk ke folder & jalankan
 
 ```bash
 cd ../modul8-agent
@@ -339,7 +431,7 @@ docker compose up --build
 
 Di terminal baru: `docker compose exec app python ingest.py`
 
-### 5.2 Coba endpoint /agent
+### 7.2 Coba endpoint /agent
 
 ```bash
 curl -X POST http://localhost:8000/agent \
@@ -361,7 +453,7 @@ untuk goal yang sama.
 
 ---
 
-## 6. Troubleshooting Umum
+## 8. Troubleshooting Umum
 
 | Gejala | Penyebab Umum | Solusi |
 |---|---|---|
@@ -383,7 +475,7 @@ untuk goal yang sama.
 
 ---
 
-## 7. Ringkasan Perintah Cepat (Cheat Sheet)
+## 9. Ringkasan Perintah Cepat (Cheat Sheet)
 
 ```bash
 # === MODUL 2 (tanpa Docker) ===
@@ -404,6 +496,20 @@ docker compose up --build
 docker compose exec app python ingest.py   # terminal baru
 curl "http://localhost:8000/rag?query=bagaimana+cara+verifikasi+stok+barang&limit=3"
 
+# === MODUL 5 (Docker + Production RAG) ===
+cd ../modul5-productionrag
+cp .env.example .env
+docker compose up --build
+docker compose exec app python ingest.py   # terminal baru
+curl "http://localhost:8000/search?query=ambang+batas+pengadaan&limit=2&category=keuangan"
+
+# === MODUL 6 (Docker + Hybrid Search) ===
+cd ../modul6-hybridsearch
+cp .env.example .env
+docker compose up --build
+docker compose exec app python ingest.py   # terminal baru
+curl "http://localhost:8000/search?query=ambang+batas+nilai+pengadaan&limit=2"
+
 # === MODUL 7 (Docker + tool calling) ===
 cd ../modul7-toolcalling
 cp .env.example .env
@@ -423,4 +529,4 @@ curl -X POST http://localhost:8000/agent -H "Content-Type: application/json" \
 
 ---
 
-*Human Initiative × Principal Tech Sage — Modul 2, 3, 4, 7 & 8*
+*Human Initiative × Principal Tech Sage — Modul 2-4 & 7-8*

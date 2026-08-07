@@ -1,12 +1,10 @@
 """
-Modul 8 - Pipeline Data Ingestion + Hybrid Search Index (LENGKAP)
+Modul 6 - Pipeline Data Ingestion + Hybrid Search Index (LENGKAP)
 AI Knowledge Assistant - Human Initiative
 
-Dibawa maju dari Modul 6: kolom `content_tsv` (tsvector) + index GIN
-supaya PostgreSQL full-text search bisa dipakai berdampingan dengan
-vector search — dipakai bersama oleh endpoint /search DAN tool
-cari_dokumen (lihat retrieval.py) supaya keduanya sama-sama Hybrid
-Search, bukan cuma vector search polos ala Modul 4.
+Melanjutkan Modul 5: menambahkan kolom `content_tsv` (tsvector) + index
+GIN supaya PostgreSQL full-text search bisa dipakai berdampingan dengan
+vector search — fondasi untuk Hybrid Search (RRF) di main.py.
 
 Catatan SDK: memakai `google-genai`. Model embedding gemini-embedding-001
 menghasilkan 3072 dimensi secara default; kita minta 768 dimensi lewat

@@ -1,4 +1,4 @@
-# Complete Kit — Modul 2, 3, 4, 7 & 8 (Kode Lengkap)
+# Complete Kit — Modul 2-4 & 7-8 (Kode Lengkap)
 ## AI Knowledge Assistant — Human Initiative × Principal Tech Sage
 
 > **Baru pertama kali menjalankan kit ini?** Baca **`PANDUAN_LENGKAP.md`**
@@ -12,16 +12,24 @@ jalan** — cocok untuk demo langsung, referensi trainer, atau dibagikan ke
 peserta yang tinggal ingin clone & jalankan tanpa mengerjakan TODO.
 
 ```
-modul2-fastapi/      FastAPI app lengkap (async, Pydantic validation, streaming)
-modul3-docker/       + Docker Compose, PostgreSQL(pgvector), Redis, Gemini API
-modul4-ingestion/    + Pipeline ingestion lengkap, /search, dan /rag (RAG penuh)
-modul7-toolcalling/  + Tool calling: cek_stok_barang, cari_dokumen, endpoint /chat
-modul8-agent/        + Agent loop Think-Act-Observe, endpoint /agent
+modul2-fastapi/       FastAPI app lengkap (async, Pydantic validation, streaming)
+modul3-docker/        + Docker Compose, PostgreSQL(pgvector), Redis, Gemini API
+modul4-ingestion/     + Pipeline ingestion lengkap, /search, dan /rag (RAG penuh)
+modul5-productionrag/ + Metadata filtering, reranking (Gemini), context assembly
+modul6-hybridsearch/  + Hybrid Search: vector + keyword (full-text) via RRF
+modul7-toolcalling/   + Tool calling: cek_stok_barang, cari_dokumen, endpoint /chat
+modul8-agent/         + Agent loop Think-Act-Observe, endpoint /agent
 ```
 
-**Catatan SDK:** modul 3, 4, 7, dan 8 memakai `google-genai` (paket resmi
-terbaru). Paket `google-generativeai` yang lebih lama sudah *deprecated*
-sejak Agustus 2025 — jangan pakai itu untuk kode baru.
+**Setiap modul membawa maju kode modul sebelumnya** — bukan berdiri
+sendiri-sendiri. Yang paling terlihat: endpoint `/search` dan tool
+`cari_dokumen` di Modul 7 & 8 sama-sama memakai pipeline Hybrid Search +
+rerank dari Modul 5/6 (lihat `app/retrieval.py` di kedua modul itu),
+bukan vector search polos ala Modul 4.
+
+**Catatan SDK:** modul 3-8 memakai `google-genai` (paket resmi terbaru).
+Paket `google-generativeai` yang lebih lama sudah *deprecated* sejak
+Agustus 2025 — jangan pakai itu untuk kode baru.
 
 ## Status Verifikasi
 
@@ -34,8 +42,10 @@ sintaksnya):
 | 2 | Endpoint `/ask`, validasi Pydantic, Dependency Injection (`verify_api_key`), error handling (`/documents/{id}`), konkurensi async, `TestClient` | Semua endpoint merespons benar; DI mengembalikan 401 konsisten baik header hilang maupun salah; 404 jelas untuk id tidak ada |
 | 3 | `/db-check` ke PostgreSQL+pgvector sungguhan, `/cache-check` ke Redis sungguhan, `/gemini-test` dengan API key asli (`google-genai`) | Semua endpoint terhubung/merespons dengan benar; `/gemini-test` mengembalikan jawaban Gemini yang sesungguhnya |
 | 4 | Chunking + overlap, ingestion ke pgvector, idempotency, `/search`, `/rag` (retrieval + generation) dengan API key asli | Ingest ulang tidak menduplikasi data; `/search` & `/rag` mengembalikan hasil relevan; `/rag` menjawab jujur "tidak tahu" untuk pertanyaan di luar konteks dokumen |
-| 7 | `/chat` (tool calling) dengan API key asli: tool `cek_stok_barang`, tool `cari_dokumen`, tanpa tool sama sekali | Ketiganya bekerja benar dengan jawaban Gemini sungguhan; model kadang memanggil tool dua kali berturut-turut (lihat bug #4 di bawah) — skenario "dua tool dalam satu pesan" tidak sempat diuji live karena kuota harian free-tier API key habis |
-| 8 | Endpoint dasar dengan API key asli; endpoint `/agent` diuji **live** dengan goal 2 tool berurutan (`gemini-3.5-flash`, kuota `gemini-3.6-flash` sedang habis dari pengujian Modul 7); loop `Agent.run()` juga diuji dengan Gemini client di-mock untuk skenario pengaman `max_steps` | Agent benar-benar melakukan 4 langkah think-act-observe nyata: cek stok genset (3 unit, di bawah 5) → cari SOP (2 kali, menyempurnakan query sendiri) → jawaban akhir yang menggabungkan keduanya, `stopped_reason: model_gave_final_answer`; skenario "macet" (mock) berhenti paksa tepat di `max_steps` |
+| 5 | `/search` dengan metadata filter (`category`) dan reranking Gemini (structured output `response_schema`) dengan API key asli | `candidates_retrieved` (10) vs `candidates_after_rerank` (`limit`) sesuai desain; filter kategori terbukti mengubah jumlah kandidat; kategori yang tidak match mengembalikan hasil kosong (bukan crash) |
+| 6 | `/search` hybrid (vector + keyword + RRF) dengan API key asli; kolom `content_tsv` + index GIN diverifikasi lewat `\d documents` | Query istilah spesifik ("ambang batas nilai pengadaan") berhasil ditemukan lewat full-text search; `rrf_score` naik untuk dokumen yang muncul di kedua metode pencarian |
+| 7 | `/chat` (tool calling) dengan API key asli: tool `cek_stok_barang`, tool `cari_dokumen` (memakai pipeline hybrid+rerank dari Modul 5/6), tanpa tool sama sekali | Ketiganya bekerja benar dengan jawaban Gemini sungguhan; model kadang memanggil tool dua kali berturut-turut (lihat bug #4 di bawah) — skenario "dua tool dalam satu pesan" tidak sempat diuji live karena kuota harian free-tier API key habis |
+| 8 | Endpoint dasar dengan API key asli; endpoint `/agent` diuji **live** dua kali: goal 2 tool berurutan (`gemini-3.5-flash`, kuota `gemini-3.6-flash` sedang habis), dan goal yang butuh `cari_dokumen` hybrid (`gemini-3.6-flash`, setelah kuota pulih); loop `Agent.run()` juga diuji dengan Gemini client di-mock untuk skenario pengaman `max_steps` | Agent benar-benar melakukan langkah think-act-observe nyata dan berhenti tepat dengan `stopped_reason: model_gave_final_answer` di kedua goal; skenario "macet" (mock) berhenti paksa tepat di `max_steps` |
 
 ## Bug yang Ditemukan & Diperbaiki Selama Pengujian
 
@@ -72,8 +82,19 @@ yang jelas: `answer_text = final_response.text or "Model masih ingin
 memanggil tool tambahan..."` — bukan meniadakan skenarionya, tapi
 membuatnya gagal dengan anggun.
 
+**5. Modul 7/8 masih tertinggal di retrieval ala Modul 4.** Kit sumber
+(termasuk versi trainer aslinya) tidak pernah membawa maju peningkatan
+retrieval dari Modul 5 (metadata filter + rerank) dan Modul 6 (hybrid
+search) ke `/search` dan tool `cari_dokumen` di Modul 7/8 — keduanya
+masih vector search polos. Diperbaiki dengan memisahkan pipeline
+retrieval ke `app/retrieval.py` (dipakai bersama oleh `main.py` dan
+`tools.py` supaya tidak circular import), lalu mengganti `/search` dan
+`cari_dokumen` di Modul 7 & 8 untuk memakainya — sekarang tool yang
+dipanggil agent punya kualitas retrieval yang sama dengan endpoint
+HTTP-nya sendiri.
+
 Kalau kode-kode ini ditulis ulang manual tanpa pengujian nyata,
-keempatnya bug yang mudah lolos.
+kelimanya bug/celah yang mudah lolos.
 
 ## Alur Pemakaian yang Disarankan
 
@@ -83,16 +104,20 @@ keempatnya bug yang mudah lolos.
 3. `modul4-ingestion/` — isi `.env` dengan API key Gemini asli sebelum
    sesi, jalankan `ingest.py` di depan peserta, demo `/search` lalu `/rag`
    (RAG penuh: retrieval + generation dalam satu endpoint)
-4. `modul7-toolcalling/` — demo `/chat`, tunjukkan `tools_called` di
+4. `modul5-productionrag/` — demo `/search` dengan `category` dan
+   bandingkan `candidates_retrieved` vs `candidates_after_rerank`
+5. `modul6-hybridsearch/` — demo `/search` dengan query istilah spesifik
+   (mis. nominal rupiah), tunjukkan `rrf_score` di response
+6. `modul7-toolcalling/` — demo `/chat`, tunjukkan `tools_called` di
    response supaya peserta lihat keputusan model secara transparan
-5. `modul8-agent/` — demo `/agent` dengan goal 2+ langkah, bandingkan
+7. `modul8-agent/` — demo `/agent` dengan goal 2+ langkah, bandingkan
    dengan `/chat` untuk goal yang sama
 
 ## Prasyarat
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/) — pengelola package Python untuk Modul 2 (lihat panduan per OS di `modul2-fastapi/`)
-- Docker Desktop — untuk Modul 3, 4, 7, 8
+- Docker Desktop — untuk Modul 3-8
 - API key Google Gemini — https://ai.google.dev/ (wajib mulai Modul 4)
 
 ## Troubleshooting Cepat
@@ -106,7 +131,7 @@ Gejala paling umum:
 | `port already in use` / `address already in use` (8000, 5432, atau 6379) | Ada proses lain (server lama, aplikasi lain) masih memakai port itu | Cek proses yang pakai port, lalu matikan, **atau** ubah port kiri pada `docker-compose.yml`/`uvicorn --port` |
 | Docker Desktop belum jalan / `docker: command not found` | Docker Desktop belum di-install atau belum dibuka | Install dari docker.com, buka aplikasinya, tunggu status "Running" sebelum `docker compose up` |
 | `.env` tidak ditemukan / `GEMINI_API_KEY` kosong | Lupa copy `.env.example` → `.env`, atau belum diisi | `cp .env.example .env` (Windows: `copy .env.example .env`), lalu isi `GEMINI_API_KEY` |
-| Perubahan kode tidak muncul | Modul 2: lupa flag `--reload`; Modul 3/4/7/8: volume `./app:/app` tidak ter-mount | Modul 2: pakai `uvicorn main:app --reload`; Modul 3/4/7/8: cek `docker compose logs app` |
+| Perubahan kode tidak muncul | Modul 2: lupa flag `--reload`; Modul 3-8: volume `./app:/app` tidak ter-mount | Modul 2: pakai `uvicorn main:app --reload`; Modul 3-8: cek `docker compose logs app` |
 | `429 RESOURCE_EXHAUSTED` dari Gemini | Kuota free-tier harian habis untuk model `gemini-3.6-flash` (±20 request/hari) | Tunggu, atau pakai API key lain — terutama sebelum demo Modul 7/8 yang butuh beberapa panggilan berurutan |
 
 **Cek proses yang memakai sebuah port** (contoh port `8000`, ganti sesuai kebutuhan):
