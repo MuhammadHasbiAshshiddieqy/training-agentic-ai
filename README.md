@@ -1,4 +1,4 @@
-# Complete Kit — Modul 2-4 & 7-8 (Kode Lengkap)
+# Complete Kit — Modul 2-11 (Kode Lengkap)
 ## AI Knowledge Assistant — Human Initiative × Principal Tech Sage
 
 > **Baru pertama kali menjalankan kit ini?** Baca **`PANDUAN_LENGKAP.md`**
@@ -12,22 +12,40 @@ jalan** — cocok untuk demo langsung, referensi trainer, atau dibagikan ke
 peserta yang tinggal ingin clone & jalankan tanpa mengerjakan TODO.
 
 ```
-modul2-fastapi/       FastAPI app lengkap (async, Pydantic validation, streaming)
-modul3-docker/        + Docker Compose, PostgreSQL(pgvector), Redis, Gemini API
-modul4-ingestion/     + Pipeline ingestion lengkap, /search, dan /rag (RAG penuh)
-modul5-productionrag/ + Metadata filtering, reranking (Gemini), context assembly
-modul6-hybridsearch/  + Hybrid Search: vector + keyword (full-text) via RRF
-modul7-toolcalling/   + Tool calling: cek_stok_barang, cari_dokumen, endpoint /chat
-modul8-agent/         + Agent loop Think-Act-Observe, endpoint /agent
+modul2-fastapi/         FastAPI app lengkap (async, Pydantic validation, streaming)
+modul3-docker/          + Docker Compose, PostgreSQL(pgvector), Redis, Gemini API
+modul4-ingestion/       + Pipeline ingestion lengkap, /search, dan /rag (RAG penuh)
+modul5-productionrag/   + Metadata filtering, reranking (Gemini), context assembly
+modul6-hybridsearch/    + Hybrid Search: vector + keyword (full-text) via RRF
+modul7-toolcalling/     + Tool calling: cek_stok_barang, cari_dokumen, endpoint /chat
+modul8-agent/           + Agent loop Think-Act-Observe, endpoint /agent
+modul9-semanticcache/   + Semantic cache Redis: embedding cache (exact) + response cache (similarity) di /chat
+modul10-guardrails/     + Input/output guardrail (prompt injection, LLM-as-judge grounded+safe) di /chat & /agent
+modul11-observability/  + Tracing Langfuse full pipeline + evaluate.py (Gemini-as-judge, skor otomatis)
 ```
 
-**Setiap modul membawa maju kode modul sebelumnya** — bukan berdiri
-sendiri-sendiri. Yang paling terlihat: endpoint `/search` dan tool
-`cari_dokumen` di Modul 7 & 8 sama-sama memakai pipeline Hybrid Search +
-rerank dari Modul 5/6 (lihat `app/retrieval.py` di kedua modul itu),
-bukan vector search polos ala Modul 4.
+> **Catatan percabangan modul 9-11:** kit ini dibangun dalam beberapa
+> tahap terpisah, jadi rantai "tiap modul membawa maju modul sebelumnya"
+> bercabang mulai Modul 9, bukan satu garis lurus:
+>
+> ```
+> Modul 8 ──► Modul 9 ──┬──► Modul 10 (guardrails, TIDAK mengandung observability)
+>                        └──► Modul 11 (observability, TIDAK mengandung guardrails)
+> ```
+>
+> `modul10-guardrails/` dan `modul11-observability/` **sama-sama** dibawa
+> maju langsung dari `modul9-semanticcache/`, tapi **belum digabung satu
+> sama lain** — Modul 11 belum meng-instrumentasi guardrail Modul 10, dan
+> Modul 10 belum punya tracing Langfuse ala Modul 11. Lihat "Status
+> Verifikasi" di bawah untuk detail apa yang sudah/belum diuji tiap modul.
 
-**Catatan SDK:** modul 3-8 memakai `google-genai` (paket resmi terbaru).
+**Setiap modul membawa maju kode modul sebelumnya** — bukan berdiri
+sendiri-sendiri (kecuali percabangan 9→10 dan 9→11 di atas). Yang paling
+terlihat: endpoint `/search` dan tool `cari_dokumen` di Modul 7-10
+sama-sama memakai pipeline Hybrid Search + rerank dari Modul 5/6 (lihat
+`app/retrieval.py`), bukan vector search polos ala Modul 4.
+
+**Catatan SDK:** modul 3-11 memakai `google-genai` (paket resmi terbaru).
 Paket `google-generativeai` yang lebih lama sudah *deprecated* sejak
 Agustus 2025 — jangan pakai itu untuk kode baru.
 
@@ -46,6 +64,9 @@ sintaksnya):
 | 6 | `/search` hybrid (vector + keyword + RRF) dengan API key asli; kolom `content_tsv` + index GIN diverifikasi lewat `\d documents` | Query istilah spesifik ("ambang batas nilai pengadaan") berhasil ditemukan lewat full-text search; `rrf_score` naik untuk dokumen yang muncul di kedua metode pencarian |
 | 7 | `/chat` (tool calling) dengan API key asli: tool `cek_stok_barang`, tool `cari_dokumen` (memakai pipeline hybrid+rerank dari Modul 5/6), tanpa tool sama sekali | Ketiganya bekerja benar dengan jawaban Gemini sungguhan; model kadang memanggil tool dua kali berturut-turut (lihat bug #4 di bawah) — skenario "dua tool dalam satu pesan" tidak sempat diuji live karena kuota harian free-tier API key habis |
 | 8 | Endpoint dasar dengan API key asli; endpoint `/agent` diuji **live** dua kali: goal 2 tool berurutan (`gemini-3.5-flash`, kuota `gemini-3.6-flash` sedang habis), dan goal yang butuh `cari_dokumen` hybrid (`gemini-3.6-flash`, setelah kuota pulih); loop `Agent.run()` juga diuji dengan Gemini client di-mock untuk skenario pengaman `max_steps` | Agent benar-benar melakukan langkah think-act-observe nyata dan berhenti tepat dengan `stopped_reason: model_gave_final_answer` di kedua goal; skenario "macet" (mock) berhenti paksa tepat di `max_steps` |
+| 9 | **Belum diuji dengan API key Gemini sungguhan.** `cache.py` (embedding cache + semantic cache) diuji dengan Redis lokal ASLI tapi `embed_text`/`generate_content` di-mock: exact-match, cosine similarity threshold, lazy cleanup entry kedaluwarsa, dan alur penuh `/chat` (cache hit/miss, `latency_ms`, pengecualian `REALTIME_TOOLS`) lewat FastAPI `TestClient` | Semua unit test & test integrasi lulus; belum ada percobaan dengan Gemini API key asli |
+| 10 | Dibangun di atas Modul 9 + guardrails (`app/guardrails.py`). Diuji **live** dengan API key Gemini asli: input guardrail (`/chat` & `/agent`), output guardrail cache MISS→HIT, `/agent` 2-tool | Input guardrail menolak prompt injection dengan `400` sebelum cache/Gemini disentuh; cache MISS `latency_ms: 25423` vs cache HIT `latency_ms: 573` (44x lebih cepat) dengan `guardrail` **identik persis** di kedua response (bukti verdict diambil dari cache, bukan dihitung ulang); output guardrail terbukti menilai isi secara nyata — menandai `is_grounded: false` saat `/chat` jatuh ke pesan fallback bug #4 (bukan jawaban sungguhan) |
+| 11 | **Belum diuji dengan API key Gemini/Langfuse sungguhan.** API resmi `langfuse` v4 (`observe`, `get_client`, `update_current_generation/span`, `score_current_span`) diverifikasi lewat `pip install langfuse` + inspeksi signature langsung (bukan tebakan/ingatan versi lama) untuk memastikan tidak memakai API v2 yang sudah deprecated; seluruh endpoint & `evaluate.py` diuji dengan Gemini + Redis di-mock, termasuk memastikan `@observe` tidak menyebabkan crash saat kredensial Langfuse kosong (graceful degrade) | Semua unit test & test integrasi lulus; belum ada percobaan dengan project Langfuse maupun Gemini API key sungguhan |
 
 ## Bug yang Ditemukan & Diperbaiki Selama Pengujian
 
@@ -112,13 +133,25 @@ kelimanya bug/celah yang mudah lolos.
    response supaya peserta lihat keputusan model secara transparan
 7. `modul8-agent/` — demo `/agent` dengan goal 2+ langkah, bandingkan
    dengan `/chat` untuk goal yang sama
+8. `modul9-semanticcache/` — demo `/chat` dua kali dengan pertanyaan
+   SEMAKNA (bukan exact sama), tunjukkan `cache_hit: true` & `latency_ms`
+   yang turun drastis di panggilan kedua, cek `/cache-stats`
+9. `modul10-guardrails/` (cabang dari Modul 9) — demo input guardrail
+   menolak prompt injection dengan `400`, lalu tunjukkan field
+   `guardrail` di response `/chat` sama-sama muncul di cache MISS
+   maupun HIT
+10. `modul11-observability/` (cabang lain dari Modul 9, paralel dengan
+    Modul 10) — demo trace di dashboard Langfuse untuk
+    `/chat`/`/search`/`/agent`, lalu jalankan `evaluate.py` dua kali
+    berturut-turut untuk lihat skor + efek cache pada latensi rata-rata
 
 ## Prasyarat
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/) — pengelola package Python untuk Modul 2 (lihat panduan per OS di `modul2-fastapi/`)
-- Docker Desktop — untuk Modul 3-8
+- Docker Desktop — untuk Modul 3-11
 - API key Google Gemini — https://ai.google.dev/ (wajib mulai Modul 4)
+- Akun Langfuse (opsional, gratis) — https://cloud.langfuse.com (untuk melihat trace sungguhan di Modul 11; tanpa ini modul tetap jalan normal tanpa tracing)
 
 ## Troubleshooting Cepat
 
@@ -131,7 +164,7 @@ Gejala paling umum:
 | `port already in use` / `address already in use` (8000, 5432, atau 6379) | Ada proses lain (server lama, aplikasi lain) masih memakai port itu | Cek proses yang pakai port, lalu matikan, **atau** ubah port kiri pada `docker-compose.yml`/`uvicorn --port` |
 | Docker Desktop belum jalan / `docker: command not found` | Docker Desktop belum di-install atau belum dibuka | Install dari docker.com, buka aplikasinya, tunggu status "Running" sebelum `docker compose up` |
 | `.env` tidak ditemukan / `GEMINI_API_KEY` kosong | Lupa copy `.env.example` → `.env`, atau belum diisi | `cp .env.example .env` (Windows: `copy .env.example .env`), lalu isi `GEMINI_API_KEY` |
-| Perubahan kode tidak muncul | Modul 2: lupa flag `--reload`; Modul 3-8: volume `./app:/app` tidak ter-mount | Modul 2: pakai `uvicorn main:app --reload`; Modul 3-8: cek `docker compose logs app` |
+| Perubahan kode tidak muncul | Modul 2: lupa flag `--reload`; Modul 3-11: volume `./app:/app` tidak ter-mount | Modul 2: pakai `uvicorn main:app --reload`; Modul 3-11: cek `docker compose logs app` |
 | `429 RESOURCE_EXHAUSTED` dari Gemini | Kuota free-tier harian habis untuk model `gemini-3.6-flash` (±20 request/hari) | Tunggu, atau pakai API key lain — terutama sebelum demo Modul 7/8 yang butuh beberapa panggilan berurutan |
 
 **Cek proses yang memakai sebuah port** (contoh port `8000`, ganti sesuai kebutuhan):
