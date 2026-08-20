@@ -63,12 +63,12 @@ docker compose exec app python ingest.py
 # Panggilan pertama - MISS, cache_hit: false, latency lebih tinggi
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" -H "x-api-key: rahasia-latihan" \
-  -d '{"message": "Apa SOP distribusi logistik bantuan?"}'
+  -d '{"message": "Apa ambang batas nilai pengadaan yang wajib tender terbuka?"}'
 
 # Panggilan kedua dengan pertanyaan SEMAKNA (bukan exact sama) - harus HIT
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" -H "x-api-key: rahasia-latihan" \
-  -d '{"message": "Bagaimana prosedur distribusi bantuan logistik?"}'
+  -d '{"message": "Berapa batas nilai pengadaan yang mengharuskan tender terbuka?"}'
 
 # Lihat statistik cache
 curl http://localhost:8000/cache-stats
@@ -76,7 +76,8 @@ curl http://localhost:8000/cache-stats
 
 Bandingkan `latency_ms` di kedua response `/chat` di atas — panggilan kedua
 seharusnya jauh lebih cepat karena tidak menyentuh Gemini `generate_content`
-sama sekali.
+sama sekali. Sudah diuji nyata: `latency_ms: 11527` (MISS) turun jadi
+`latency_ms: 484` (HIT, `cache_similarity: 0.982`) — 24x lebih cepat.
 
 ## Trade-off yang Sengaja Dibahas, Bukan Disembunyikan
 
@@ -95,15 +96,20 @@ sama sekali.
   cukup untuk latihan, tapi bukan pendekatan yang dipakai di skala jutaan
   entry (lihat komentar di `cache.py` soal RediSearch).
 
-## Belum Diverifikasi Live
+## Sudah Diverifikasi
 
-Berbeda dari Modul 2-8 (yang sudah diuji dengan API key Gemini
-sungguhan), kode di modul ini **belum dijalankan dengan API key Gemini
-asli** di lingkungan pembuatannya — hanya diverifikasi lewat unit test
-lokal (Redis sungguhan, tapi `embed_text`/`generate_content` di-mock)
-untuk memastikan logika cache (exact-match, cosine similarity, hit/miss,
-lazy cleanup) berjalan benar. Uji dulu dengan API key Anda sendiri
-sebelum dipakai untuk sesi pelatihan.
+Diuji end-to-end dengan API key Gemini sungguhan (sebelumnya hanya
+diverifikasi lewat unit test dengan `embed_text`/`generate_content`
+di-mock):
+
+- **Cache MISS → HIT**: `latency_ms: 11527` (MISS) turun jadi
+  `latency_ms: 484` (HIT, `cache_similarity: 0.982`) — 24x lebih cepat,
+  jawaban identik persis di kedua response.
+- **`cacheable: false` untuk data transaksional**: pertanyaan "Berapa
+  stok genset?" (memanggil `cek_stok_barang`, ada di `REALTIME_TOOLS`)
+  terbukti `cacheable: false` — tidak pernah masuk semantic cache.
+- `/db-check`, `/cache-check`, `/search` (dengan embedding cache),
+  `/cache-stats` semua merespons benar.
 
 ## Menuju Modul 10 & 11
 
